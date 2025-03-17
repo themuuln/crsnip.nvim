@@ -36,8 +36,8 @@ local function read_snippets(file_path)
 		if content and content ~= "" then
 			local ok, decoded = pcall(vim.fn.json_decode, content)
 			if ok and type(decoded) == "table" then
+				-- Handle old array-based snippet files
 				if vim.tbl_islist(decoded) then
-					-- If the old file was an array, convert it to a table by name
 					for _, snippet in ipairs(decoded) do
 						if snippet.name then
 							snippets[snippet.name] = {
@@ -48,7 +48,6 @@ local function read_snippets(file_path)
 						end
 					end
 				else
-					-- Normal object-based JSON
 					snippets = decoded
 				end
 			else
@@ -58,87 +57,6 @@ local function read_snippets(file_path)
 	end
 	return snippets
 end
-
---------------------------------------------------------------------------------
--- Pretty-print a Lua table as valid JSON
---------------------------------------------------------------------------------
-local function to_pretty_json(tbl)
-	local function escape_str(s)
-		-- %q escapes special chars, quotes, newlines, etc. for valid JSON strings
-		return string.format("%q", s)
-	end
-
-	local function is_array(t)
-		-- Checks if t is a "continuous" numeric sequence
-		local max = 0
-		for k, _ in pairs(t) do
-			if type(k) ~= "number" then
-				return false
-			end
-			if k > max then
-				max = k
-			end
-		end
-		for i = 1, max do
-			if t[i] == nil then
-				return false
-			end
-		end
-		return true
-	end
-
-	local function serialize(obj, indent)
-		indent = indent or 0
-		local lines = {}
-
-		if type(obj) == "table" then
-			if is_array(obj) then
-				table.insert(lines, "[")
-				for i, v in ipairs(obj) do
-					table.insert(
-						lines,
-						string.rep("  ", indent + 1) .. serialize(v, indent + 1) .. (i < #obj and "," or "")
-					)
-				end
-				table.insert(lines, string.rep("  ", indent) .. "]")
-			else
-				table.insert(lines, "{")
-				local keys = {}
-				for k in pairs(obj) do
-					table.insert(keys, k)
-				end
-				table.sort(keys, function(a, b)
-					return tostring(a) < tostring(b)
-				end)
-				for i, k in ipairs(keys) do
-					local v = obj[k]
-					table.insert(
-						lines,
-						string.rep("  ", indent + 1)
-							.. escape_str(k)
-							.. ": "
-							.. serialize(v, indent + 1)
-							.. (i < #keys and "," or "")
-					)
-				end
-				table.insert(lines, string.rep("  ", indent) .. "}")
-			end
-		elseif type(obj) == "string" then
-			table.insert(lines, escape_str(obj))
-		elseif type(obj) == "number" or type(obj) == "boolean" then
-			table.insert(lines, tostring(obj))
-		else
-			-- Fallback for nil, function, etc. => JSON "null"
-			table.insert(lines, "null")
-		end
-
-		return table.concat(lines, "\n")
-	end
-
-	return serialize(tbl, 0)
-end
-
---------------------------------------------------------------------------------
 
 -- Create a snippet
 M.create_snippet = function(opts)
@@ -197,7 +115,7 @@ M.create_snippet = function(opts)
 	end
 
 	-- Ensure snippet directory exists
-	ensure_dir(vim.fn.stdpath("config") .. "/snippets")
+	ensure_dir(M.config.options.snippet_dir)
 
 	local file_path = M.config.options.snippet_dir .. "/" .. language .. ".json"
 
@@ -214,13 +132,16 @@ M.create_snippet = function(opts)
 		description = description,
 	}
 
-	-- Write to file as pretty JSON
+	-- Write to file as raw (single-line) JSON
 	local file_write, err = io.open(file_path, "w")
 	if not file_write then
 		vim.api.nvim_err_writeln("Error opening file for writing: " .. (err or "unknown error"))
 		return
 	end
-	file_write:write(to_pretty_json(snippets))
+
+	-- IMPORTANT: No fancy formatting, just directly encode
+	local raw_json = vim.fn.json_encode(snippets)
+	file_write:write(raw_json)
 	file_write:close()
 
 	local action = existed and "overridden" or "added"
