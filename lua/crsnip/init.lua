@@ -1,10 +1,8 @@
 local config = require("crsnip.config")
-config.setup() -- Use default configuration options
+config.setup() -- Set up with default options.
 
--- Optionally load other components:
-pcall(require, "crsnip.snippets")
-
--- Register snippet creator and its command.
+-- Load the snippet creator (this registers the :CreateSnippet command)
 require("crsnip.creator")
 
+-- You can add additional initialization here if needed.
 return {}
