@@ -1,11 +1,10 @@
 local M = {}
 
-M.setup = function(user_opts)
-	local config = require("nvim-snippets.config")
-	config.setup(user_opts) -- Apply user options (if any)
+-- Automatically run setup when the plugin is loaded
+local config = require("nvim-snippets.config")
+config.setup() -- Load config
 
-	require("nvim-snippets.snippets").load()
-	require("nvim-snippets.creator") -- Ensure the command is registered
-end
+require("nvim-snippets.snippets").load() -- Load snippets
+require("nvim-snippets.creator") -- Ensure commands are registered
 
-return M
+return M -- ✅ Ensure this returns a valid module
