@@ -2,18 +2,16 @@ local M = {}
 
 M.create_snippet = function(opts)
 	local snippet_text = {}
-
-	-- Get selected lines if range is provided
 	if opts.line1 and opts.line2 then
 		snippet_text = vim.api.nvim_buf_get_lines(0, opts.line1 - 1, opts.line2, false)
 	end
 
-	-- Get user input for snippet details
+	-- Get snippet metadata from user input
 	local prefix = vim.fn.input("Snippet Prefix: ")
 	local name = vim.fn.input("Snippet Name: ")
 	local description = vim.fn.input("Snippet Description: ")
 
-	-- Determine the language (current filetype or user choice)
+	-- Determine the language based on current filetype or let user choose
 	local language = vim.bo.filetype
 	if not language or language == "" then
 		local langs = { "typescript", "javascript", "dart" }
@@ -30,7 +28,7 @@ M.create_snippet = function(opts)
 		language = langs[choice]
 	end
 
-	-- If no lines were selected, allow manual input
+	-- If no snippet text is selected, allow manual input
 	if #snippet_text == 0 then
 		vim.api.nvim_out_write("Enter snippet code, finish input with a line containing only '.'\n")
 		while true do
@@ -50,19 +48,23 @@ M.create_snippet = function(opts)
 		body = snippet_text,
 	}
 
-	-- Get snippet storage location
+	-- Get snippet storage location from config, fallback to default
 	local config = require("nvim-snippets.config")
-	local snippet_dir = config.options.snippet_dir
-	os.execute("mkdir -p " .. snippet_dir)
+	local snippet_dir = config.options.snippet_dir or (os.getenv("HOME") .. "/.config/nvim/snippets")
+
+	-- Ensure the snippet directory exists
+	local mkdir_cmd = "mkdir -p " .. snippet_dir
+	os.execute(mkdir_cmd)
+
 	local file_path = snippet_dir .. "/" .. language .. ".json"
 
-	-- Load existing snippets
+	-- Load existing snippets from the file (if it exists)
 	local snippets = {}
 	local file = io.open(file_path, "r")
 	if file then
 		local content = file:read("*a")
 		file:close()
-		if content ~= "" then
+		if content and content ~= "" then
 			local ok, decoded = pcall(vim.fn.json_decode, content)
 			if ok and type(decoded) == "table" then
 				snippets = decoded
@@ -72,15 +74,16 @@ M.create_snippet = function(opts)
 		end
 	end
 
-	-- Add the new snippet
+	-- Append the new snippet to the existing snippets list
 	table.insert(snippets, snippet_entry)
 
-	-- Save to JSON file
+	-- Write the updated snippets list to the file in JSON format
 	local file_write, err = io.open(file_path, "w")
 	if not file_write then
 		vim.api.nvim_err_writeln("Error opening file for writing: " .. err)
 		return
 	end
+
 	local json_snippets = vim.fn.json_encode(snippets)
 	file_write:write(json_snippets)
 	file_write:close()
@@ -88,7 +91,7 @@ M.create_snippet = function(opts)
 	vim.api.nvim_out_write("✅ Snippet saved to " .. file_path .. "\n")
 end
 
--- Register the command
+-- Register the CreateSnippet command
 vim.api.nvim_create_user_command("CreateSnippet", function(opts)
 	M.create_snippet(opts)
 end, { range = true, nargs = 0 })
