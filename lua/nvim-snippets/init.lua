@@ -1,10 +1,11 @@
-local M = {}
+local config = require("crsnip.config")
+config.setup() -- Use default options
 
--- Automatically run setup when the plugin is loaded
-local config = require("nvim-snippets.config")
-config.setup() -- Load config
+-- Load snippets (optional)
+pcall(require, "crsnip.snippets")
 
-require("nvim-snippets.snippets").load() -- Load snippets
-require("nvim-snippets.creator") -- Ensure commands are registered
+-- Register commands and snippet creator (this file simply ensures creator.lua runs)
+require("crsnip.creator")
 
-return M -- ✅ Ensure this returns a valid module
+-- Return an empty table; all side effects have already occurred
+return {}

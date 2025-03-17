@@ -1,10 +1,10 @@
 local Snippets = {}
 
 Snippets.load = function()
-	local home = os.getenv("HOME")
-	local snippet_dir = home .. "/.config/nvim/snippets/"
+	local config = require("crsnip.config")
+	local snippet_dir = config.options.snippet_dir
 	local language = vim.bo.filetype
-	local file_path = snippet_dir .. language .. ".json"
+	local file_path = snippet_dir .. "/" .. language .. ".json"
 
 	local file = io.open(file_path, "r")
 	if not file then
@@ -15,7 +15,7 @@ Snippets.load = function()
 	local content = file:read("*a")
 	file:close()
 
-	if content ~= "" then
+	if content and content ~= "" then
 		local ok, snippets = pcall(vim.fn.json_decode, content)
 		if ok and type(snippets) == "table" then
 			vim.api.nvim_out_write("Loaded " .. #snippets .. " snippets for " .. language .. "\n")
