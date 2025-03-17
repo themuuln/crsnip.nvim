@@ -1,7 +1,6 @@
-local M = {}
-
-M.options = {
-	snippet_dir = vim.fn.stdpath("config") .. "/snippets",
+return {
+	options = {
+		snippet_dir = vim.fn.stdpath("config") .. "/snippets",
+		debug = false,
+	},
 }
-
-return M
