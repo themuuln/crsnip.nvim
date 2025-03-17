@@ -1,11 +1,10 @@
 local config = require("crsnip.config")
-config.setup() -- Use default options
+config.setup() -- Use default configuration options
 
--- Load snippets (optional)
+-- Optionally load other components:
 pcall(require, "crsnip.snippets")
 
--- Register commands and snippet creator (this file simply ensures creator.lua runs)
+-- Register snippet creator and its command.
 require("crsnip.creator")
 
--- Return an empty table; all side effects have already occurred
 return {}
