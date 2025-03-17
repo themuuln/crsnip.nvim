@@ -128,7 +128,7 @@ M.create_snippet = function(opts)
 	end
 
 	-- Ensure snippet directory exists
-	ensure_dir(M.config.options.snippet_dir)
+	ensure_dir(vim.fn.stdpath("config") .. "/snippets")
 
 	-- Get the file path
 	local file_path = M.config.options.snippet_dir .. "/" .. language .. ".json"
