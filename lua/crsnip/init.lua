@@ -57,16 +57,46 @@ local function read_snippets(file_path)
 	return snippets
 end
 
--- Format JSON nicely
+-- Format JSON nicely with proper handling of string literals
 local function format_json(obj)
-	-- Convert to JSON with indentation for better readability
+	-- Convert to JSON using vim's json encoder
 	local json = vim.fn.json_encode(obj)
-	-- Prettify the JSON (basic approach)
-	json = json:gsub('{"', '{\n  "')
-	json = json:gsub(',"', ',\n  "')
-	json = json:gsub("}}", "}\n}")
-	json = json:gsub("]}", "]\n}")
-	return json
+	local indent = 0
+	local formatted = ""
+	local in_string = false
+
+	for i = 1, #json do
+		local char = json:sub(i, i)
+		-- Check for string boundaries, taking care of escapes
+		if char == '"' then
+			local j = i - 1
+			local escaped = false
+			while j > 0 and json:sub(j, j) == "\\" do
+				escaped = not escaped
+				j = j - 1
+			end
+			if not escaped then
+				in_string = not in_string
+			end
+		end
+
+		if not in_string then
+			if char == "{" or char == "[" then
+				formatted = formatted .. char .. "\n" .. string.rep("  ", indent + 1)
+				indent = indent + 1
+			elseif char == "}" or char == "]" then
+				indent = indent - 1
+				formatted = formatted .. "\n" .. string.rep("  ", indent) .. char
+			elseif char == "," then
+				formatted = formatted .. char .. "\n" .. string.rep("  ", indent)
+			else
+				formatted = formatted .. char
+			end
+		else
+			formatted = formatted .. char
+		end
+	end
+	return formatted
 end
 
 -- Create a snippet
