@@ -8,150 +8,162 @@ M.config = {
 	},
 }
 
--- Enhanced logger utility with timestamp
+-- Logger utility
 local function log(msg, level)
 	if not M.config.options.debug then
 		return
 	end
 	level = level or "info"
-	local timestamp = os.date("%H:%M:%S")
-	vim.notify(string.format("[CRSnip %s] %s", timestamp, msg), vim.log.levels[string.upper(level)])
+	vim.notify("[CRSnip] " .. msg, vim.log.levels[string.upper(level)])
 end
 
--- Enhanced directory creation with error handling
+-- Ensure directory exists
 local function ensure_dir(dir)
-	local ok, err = pcall(function()
-		local stat = vim.loop.fs_stat(dir)
-		if not stat then
-			log("Creating directory: " .. dir, "info")
-			vim.fn.mkdir(dir, "p")
-		end
-	end)
-
-	if not ok then
-		error(string.format("Failed to create directory %s: %s", dir, err))
+	local stat = vim.loop.fs_stat(dir)
+	if not stat then
+		log("Creating directory: " .. dir, "info")
+		vim.fn.mkdir(dir, "p")
 	end
 end
 
--- Improved JSON reading with better error handling
+-- Read existing snippets from file
 local function read_snippets(file_path)
 	local snippets = {}
-	local ok, content = pcall(function()
-		local file = io.open(file_path, "r")
-		if not file then
-			return nil
-		end
+	local file = io.open(file_path, "r")
+	if file then
 		local content = file:read("*a")
 		file:close()
-		return content
-	end)
-
-	if not ok or not content or content == "" then
-		return snippets
-	end
-
-	ok, snippets = pcall(function()
-		local decoded = vim.fn.json_decode(content)
-		if type(decoded) ~= "table" then
-			return {}
-		end
-
-		-- Convert array format to object format if needed
-		if vim.tbl_islist(decoded) then
-			local converted = {}
-			for _, snippet in ipairs(decoded) do
-				if snippet.name then
-					converted[snippet.name] = {
-						prefix = snippet.prefix,
-						body = snippet.body,
-						description = snippet.description,
-					}
+		if content and content ~= "" then
+			local ok, decoded = pcall(vim.fn.json_decode, content)
+			if ok and type(decoded) == "table" then
+				if vim.tbl_islist(decoded) then
+					-- If the old file was an array, convert it to a table by name
+					for _, snippet in ipairs(decoded) do
+						if snippet.name then
+							snippets[snippet.name] = {
+								prefix = snippet.prefix,
+								body = snippet.body,
+								description = snippet.description,
+							}
+						end
+					end
+				else
+					-- Normal object-based JSON
+					snippets = decoded
 				end
+			else
+				log("Error decoding JSON, starting a new snippet file.", "warn")
 			end
-			return converted
 		end
-		return decoded
-	end)
-
-	if not ok then
-		log("Error parsing snippets file: " .. file_path, "error")
-		return {}
 	end
-
 	return snippets
 end
 
--- Improved JSON formatting with better string handling
-local function format_json(obj)
-	local function escape_string(str)
-		local escaped = str:gsub("([^%w])", function(c)
-			local escapes = {
-				['"'] = '\\"',
-				["\\"] = "\\\\",
-				["\b"] = "\\b",
-				["\f"] = "\\f",
-				["\n"] = "\\n",
-				["\r"] = "\\r",
-				["\t"] = "\\t",
-			}
-			return escapes[c] or c
-		end)
-		return escaped
+--------------------------------------------------------------------------------
+-- Pretty-print a Lua table as valid JSON
+--------------------------------------------------------------------------------
+local function to_pretty_json(tbl)
+	local function escape_str(s)
+		-- %q escapes special chars, quotes, newlines, etc. for valid JSON strings
+		return string.format("%q", s)
 	end
 
-	local function serialize(val, depth)
-		depth = depth or 0
-		local indent = string.rep("  ", depth)
-
-		if type(val) == "table" then
-			if vim.tbl_islist(val) then
-				local items = {}
-				for _, v in ipairs(val) do
-					table.insert(items, serialize(v, depth + 1))
-				end
-				return "[\n" .. indent .. "  " .. table.concat(items, ",\n" .. indent .. "  ") .. "\n" .. indent .. "]"
-			else
-				local items = {}
-				for k, v in pairs(val) do
-					table.insert(items, string.format('"%s": %s', escape_string(k), serialize(v, depth + 1)))
-				end
-				return "{\n" .. indent .. "  " .. table.concat(items, ",\n" .. indent .. "  ") .. "\n" .. indent .. "}"
+	local function is_array(t)
+		-- Checks if t is a "continuous" numeric sequence
+		local max = 0
+		for k, _ in pairs(t) do
+			if type(k) ~= "number" then
+				return false
 			end
-		elseif type(val) == "string" then
-			return string.format('"%s"', escape_string(val))
-		else
-			return tostring(val)
+			if k > max then
+				max = k
+			end
 		end
+		for i = 1, max do
+			if t[i] == nil then
+				return false
+			end
+		end
+		return true
 	end
 
-	return serialize(obj)
+	local function serialize(obj, indent)
+		indent = indent or 0
+		local lines = {}
+
+		if type(obj) == "table" then
+			if is_array(obj) then
+				table.insert(lines, "[")
+				for i, v in ipairs(obj) do
+					table.insert(
+						lines,
+						string.rep("  ", indent + 1) .. serialize(v, indent + 1) .. (i < #obj and "," or "")
+					)
+				end
+				table.insert(lines, string.rep("  ", indent) .. "]")
+			else
+				table.insert(lines, "{")
+				local keys = {}
+				for k in pairs(obj) do
+					table.insert(keys, k)
+				end
+				table.sort(keys, function(a, b)
+					return tostring(a) < tostring(b)
+				end)
+				for i, k in ipairs(keys) do
+					local v = obj[k]
+					table.insert(
+						lines,
+						string.rep("  ", indent + 1)
+							.. escape_str(k)
+							.. ": "
+							.. serialize(v, indent + 1)
+							.. (i < #keys and "," or "")
+					)
+				end
+				table.insert(lines, string.rep("  ", indent) .. "}")
+			end
+		elseif type(obj) == "string" then
+			table.insert(lines, escape_str(obj))
+		elseif type(obj) == "number" or type(obj) == "boolean" then
+			table.insert(lines, tostring(obj))
+		else
+			-- Fallback for nil, function, etc. => JSON "null"
+			table.insert(lines, "null")
+		end
+
+		return table.concat(lines, "\n")
+	end
+
+	return serialize(tbl, 0)
 end
 
--- Enhanced snippet creation with input validation
+--------------------------------------------------------------------------------
+
+-- Create a snippet
 M.create_snippet = function(opts)
 	opts = opts or {}
 	local snippet_text = {}
 
-	-- Get selected text if in visual mode
+	-- If user selected text (visual mode)
 	if opts.line1 and opts.line2 then
 		snippet_text = vim.api.nvim_buf_get_lines(0, opts.line1 - 1, opts.line2, false)
 	end
 
-	-- Enhanced input collection with validation
-	local function get_validated_input(prompt, required)
-		local input = vim.fn.input(prompt)
-		if required and input == "" then
-			error(prompt:gsub(":.*", "") .. " cannot be empty!")
-		end
-		return input
+	local prefix = vim.fn.input("Snippet Prefix: ")
+	if prefix == "" then
+		vim.api.nvim_err_writeln("Snippet prefix cannot be empty!")
+		return
 	end
 
-	local prefix = get_validated_input("Snippet Prefix: ", true)
-	local name = get_validated_input("Snippet Name (press Enter to use prefix): ", false)
-	name = name ~= "" and name or prefix
-	local description = get_validated_input("Snippet Description: ", false)
+	local name = vim.fn.input("Snippet Name: ")
+	if name == "" then
+		name = prefix -- Use prefix as name if not provided
+	end
 
-	-- Enhanced language detection
+	local description = vim.fn.input("Snippet Description: ")
+
+	-- Determine language
 	local language = vim.bo.filetype
 	if not language or language == "" then
 		local langs = { "typescript", "javascript", "dart", "lua", "python" }
@@ -159,15 +171,15 @@ M.create_snippet = function(opts)
 		for i, lang in ipairs(langs) do
 			table.insert(choices, i .. ". " .. lang)
 		end
-
 		local choice = vim.fn.inputlist(choices)
 		if choice < 1 or choice > #langs then
-			error("Invalid language choice!")
+			vim.api.nvim_err_writeln("Invalid language choice!")
+			return
 		end
 		language = langs[choice]
 	end
 
-	-- Get snippet content if not provided through selection
+	-- If no visual selection, prompt for snippet body line by line
 	if #snippet_text == 0 then
 		vim.api.nvim_out_write("Enter snippet code (finish with a line containing only '.')\n")
 		while true do
@@ -179,78 +191,72 @@ M.create_snippet = function(opts)
 		end
 
 		if #snippet_text == 0 then
-			error("Snippet body cannot be empty!")
+			vim.api.nvim_err_writeln("Snippet body cannot be empty!")
+			return
 		end
 	end
 
-	-- Save snippet with error handling
-	local ok, err = pcall(function()
-		ensure_dir(M.config.options.snippet_dir)
-		local file_path = M.config.options.snippet_dir .. "/" .. language .. ".json"
-		local snippets = read_snippets(file_path)
-		local existed = snippets[name] ~= nil
+	-- Ensure snippet directory exists
+	ensure_dir(vim.fn.stdpath("config") .. "/snippets")
 
-		snippets[name] = {
-			prefix = prefix,
-			body = snippet_text,
-			description = description,
-		}
+	local file_path = M.config.options.snippet_dir .. "/" .. language .. ".json"
 
-		local file = assert(io.open(file_path, "w"))
-		file:write(format_json(snippets))
-		file:close()
+	-- Read existing
+	local snippets = read_snippets(file_path)
 
-		local action = existed and "overridden" or "added"
-		vim.api.nvim_echo({
-			{ "✅ Snippet ", "Normal" },
-			{ name, "Special" },
-			{ " " .. action .. " to ", "Normal" },
-			{ file_path, "Directory" },
-		}, true, {})
-	end)
+	-- Check if snippet already exists
+	local existed = snippets[name] ~= nil
 
-	if not ok then
-		error(string.format("Failed to save snippet: %s", err))
+	-- Add or override
+	snippets[name] = {
+		prefix = prefix,
+		body = snippet_text,
+		description = description,
+	}
+
+	-- Write to file as pretty JSON
+	local file_write, err = io.open(file_path, "w")
+	if not file_write then
+		vim.api.nvim_err_writeln("Error opening file for writing: " .. (err or "unknown error"))
+		return
 	end
+	file_write:write(to_pretty_json(snippets))
+	file_write:close()
+
+	local action = existed and "overridden" or "added"
+	vim.api.nvim_echo({
+		{ "✅ Snippet ", "Normal" },
+		{ name, "Special" },
+		{ " " .. action .. " to ", "Normal" },
+		{ file_path, "Directory" },
+	}, true, {})
 end
 
--- Enhanced setup function with validation
+-- Plugin setup
 M.setup = function(opts)
-	local ok, err = pcall(function()
-		M.config.options = vim.tbl_deep_extend("force", M.config.options, opts or {})
+	M.config.options = vim.tbl_deep_extend("force", M.config.options, opts or {})
 
-		-- Validate configuration
-		if type(M.config.options.snippet_dir) ~= "string" then
-			error("snippet_dir must be a string")
-		end
-
-		-- Create commands
-		vim.api.nvim_create_user_command("CreateSnippet", function(cmd_opts)
-			M.create_snippet({
-				line1 = cmd_opts.line1,
-				line2 = cmd_opts.line2,
-			})
-		end, {
-			desc = "Create a new snippet",
-			range = true,
+	vim.api.nvim_create_user_command("CreateSnippet", function(cmd_opts)
+		M.create_snippet({
+			line1 = cmd_opts.line1,
+			line2 = cmd_opts.line2,
 		})
+	end, {
+		desc = "Create a new snippet",
+		range = true,
+	})
 
-		vim.api.nvim_create_user_command("CRSnip", function(cmd_opts)
-			M.create_snippet({
-				line1 = cmd_opts.line1,
-				line2 = cmd_opts.line2,
-			})
-		end, {
-			desc = "Create a new snippet",
-			range = true,
+	vim.api.nvim_create_user_command("CRSnip", function(cmd_opts)
+		M.create_snippet({
+			line1 = cmd_opts.line1,
+			line2 = cmd_opts.line2,
 		})
+	end, {
+		desc = "Create a new snippet",
+		range = true,
+	})
 
-		log("CRSnip initialized with snippet_dir: " .. M.config.options.snippet_dir)
-	end)
-
-	if not ok then
-		error(string.format("Failed to setup CRSnip: %s", err))
-	end
+	log("CRSnip initialized with snippet_dir: " .. M.config.options.snippet_dir)
 end
 
 return M
