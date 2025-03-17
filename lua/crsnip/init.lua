@@ -1,4 +1,3 @@
--- File: lua/crsnip/init.lua
 local M = {}
 
 -- Configuration with defaults
@@ -173,6 +172,17 @@ M.setup = function(opts)
 
 	-- Create command to create snippet
 	vim.api.nvim_create_user_command("CreateSnippet", function(cmd_opts)
+		M.create_snippet({
+			line1 = cmd_opts.line1,
+			line2 = cmd_opts.line2,
+		})
+	end, {
+		desc = "Create a new snippet",
+		range = true,
+	})
+
+	-- Create additional command for use with visual mode
+	vim.api.nvim_create_user_command("CRSnip", function(cmd_opts)
 		M.create_snippet({
 			line1 = cmd_opts.line1,
 			line2 = cmd_opts.line2,
