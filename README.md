@@ -1,7 +1,5 @@
 # CRSnip: Your Local Neovim Snippet Companion
 
-[![status: stable](about:sanitized)](https://github.com/themuuln/crsnip.nvim)
-
 A simple and straightforward Neovim plugin to create and manage your personal code snippets locally. `CRSnip` aims to provide an easy way to save frequently used code blocks directly from your editor, organized by filetype.
 
 ## Introduction
@@ -120,7 +118,3 @@ This plugin was created with the intention of providing a simple local snippet s
 ---
 
 Thank you for trying out `CRSnip`\! We hope it helps streamline your coding workflow.
-
-```
-
-```
