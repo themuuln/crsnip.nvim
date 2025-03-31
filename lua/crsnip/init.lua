@@ -95,8 +95,14 @@ local function write_snippets(file_path, snippets)
 		return false, "Error opening file for writing: " .. (err or "unknown error")
 	end
 
-	-- IMPORTANT: No fancy formatting, just directly encode
-	local raw_json = vim.fn.json_encode(snippets)
+	-- Use vim.json.encode with proper indentation for better formatting
+	-- and compatibility with most snippet parsers
+	local ok, raw_json = pcall(vim.json.encode, snippets)
+	if not ok then
+		-- Fallback to vim.fn.json_encode if vim.json.encode fails
+		raw_json = vim.fn.json_encode(snippets)
+	end
+
 	file:write(raw_json)
 	file:close()
 
@@ -177,6 +183,24 @@ local function get_snippet_body(line1, line2)
 	return snippet_text
 end
 
+-- Process and sanitize snippet body for VSCode format compatibility
+local function process_snippet_body(lines)
+	local processed = {}
+
+	for _, line in ipairs(lines) do
+		-- Escape special characters for VSCode snippets
+		line = line:gsub("\\", "\\\\") -- Escape backslashes first
+		line = line:gsub('"', '\\"') -- Escape double quotes
+		line = line:gsub("%(", "\\(") -- Escape parentheses for snippet parser
+		line = line:gsub("%)", "\\)")
+		line = line:gsub("%$", "\\$") -- Escape dollar signs (important for variables)
+
+		table.insert(processed, line)
+	end
+
+	return processed
+end
+
 -----------------------
 -- Public Functions  --
 -----------------------
@@ -191,6 +215,9 @@ M.create_snippet = function(opts)
 		show_error(body_err)
 		return
 	end
+
+	-- Process the snippet body for compatibility
+	local processed_body = process_snippet_body(snippet_body)
 
 	-- Get snippet info
 	local snippet_info, info_err = get_snippet_info()
@@ -220,7 +247,7 @@ M.create_snippet = function(opts)
 	-- Add or override snippet
 	snippets[snippet_info.name] = {
 		prefix = snippet_info.prefix,
-		body = snippet_body,
+		body = processed_body,
 		description = snippet_info.description,
 	}
 
